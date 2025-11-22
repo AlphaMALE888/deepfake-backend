@@ -10,85 +10,98 @@ face_cascade = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
 )
 
-def detect_face_presence(frame_path):
-    img = cv2.imread(frame_path)
-    if img is None:
+def detect_face_presence(frame_path: str) -> bool:
+    """Check if any face is present in the given frame."""
+    try:
+        img = cv2.imread(frame_path)
+        if img is None:
+            return False
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, 1.2, 4)
+        return len(faces) > 0
+    except Exception as e:
+        print("[FACE DETECTION ERROR]:", e)
         return False
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(gray, 1.2, 4)
-    return len(faces) > 0
 
 
 # ------------------------------
 # HUGGINGFACE API PREDICT
 # ------------------------------
-def hf_predict_frame(frame_path):
+def hf_predict_frame(frame_path: str):
     """
-    Sends a single frame (image file path) to HuggingFace API.
+    Sends a frame image to HuggingFace API.
     Returns:
-        score (0.0 to 1.0), method_name
-        OR (None, None) if failed
+        (fake_score [0..1], "hf_api") if success,
+        (None, None) if failed.
     """
-
-    if not settings.HF_TOKEN or not settings.HF_DEEPFAKE_MODEL:
-        return None, None  # HF not configured
-
-    with open(frame_path, "rb") as f:
-        img_bytes = f.read()
-
-    headers = {
-        "Authorization": f"Bearer {settings.HF_TOKEN}"
-    }
+    model_id = settings.HF_DEEPFAKE_MODEL or "umarbutler/deepfake-detection"
+    headers = {}
+    if settings.HF_TOKEN:
+        headers["Authorization"] = f"Bearer {settings.HF_TOKEN}"
 
     try:
+        with open(frame_path, "rb") as f:
+            img_bytes = f.read()
+
         response = requests.post(
-            f"https://api-inference.huggingface.co/models/{settings.HF_DEEPFAKE_MODEL}",
+            f"https://api-inference.huggingface.co/models/{model_id}",
             headers=headers,
             data=img_bytes,
-            timeout=20
+            timeout=30
         )
 
         if response.status_code == 200:
             data = response.json()
             if isinstance(data, list) and len(data) > 0:
-                score = float(data[0].get("score", 0.5))
-                return score, "hf_api"
+                # Try to find label with "fake"
+                fake_prob = None
+                for item in data:
+                    if "fake" in str(item.get("label", "")).lower():
+                        fake_prob = float(item.get("score", 0.0))
+                        break
+                if fake_prob is None:
+                    fake_prob = float(max(x.get("score", 0.0) for x in data))
+                return fake_prob, "hf_api"
+
+        print("[HF API] Unexpected response:", response.status_code, response.text)
+        return None, None
 
     except Exception as e:
-        print("HF API ERROR:", e)
-
-    return None, None
+        print("[HF API ERROR]:", e)
+        return None, None
 
 
 # ------------------------------
 # SIMPLE HEURISTIC FALLBACK
 # ------------------------------
-def heuristic_predict(frame_path):
-    img = cv2.imread(frame_path)
-    if img is None:
+def heuristic_predict(frame_path: str):
+    """
+    Simple fallback when HuggingFace API fails.
+    Uses image sharpness as heuristic score.
+    """
+    try:
+        img = cv2.imread(frame_path)
+        if img is None:
+            return 0.5, "heuristic"
+
+        lap = cv2.Laplacian(img, cv2.CV_64F).var()
+        score = max(0.0, min(1.0, 1 - np.tanh(lap / 1000)))
+        return float(score), "heuristic"
+    except Exception as e:
+        print("[HEURISTIC ERROR]:", e)
         return 0.5, "heuristic"
 
-    lap = cv2.Laplacian(img, cv2.CV_64F).var()
-    score = max(0.0, min(1.0, 1 - np.tanh(lap/1000)))
-    return float(score), "heuristic"
-
 
 # ------------------------------
-# MAIN FINAL PREDICT FUNCTION
+# MAIN PREDICTION FUNCTION
 # ------------------------------
-def predict_frame(frame_path):
-    """
-    Returns:
-        (fake_probability, method_used)
-    """
-
-    # 1️⃣ Try HuggingFace API first
-    score, method = hf_predict_frame(frame_path)
-    if score is not None:
-        return score, method
-
-    # 2️⃣ Fallback to heuristic if HF fails
+def predict_frame(frame_path: str):
+    """Main unified prediction entry."""
+    hf_score, method = hf_predict_frame(frame_path)
+    if hf_score is not None:
+        return hf_score, method
     return heuristic_predict(frame_path)
+
 
 
 

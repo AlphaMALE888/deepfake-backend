@@ -1,52 +1,71 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import os
 
 from app.routes import auth, analyze, admin
 from app.models.db import init_db
 from app.utils.config import settings
 
-import os
 
 # ---------------------------------------------------
 # APP INITIALIZATION
 # ---------------------------------------------------
 app = FastAPI(
     title="CyberShield - Deepfake Detection Backend",
-    version="1.0.0"
+    version="2.0.0",
+    description=(
+        "AI-powered backend for detecting deepfake videos, "
+        "images, and audio using Hugging Face models."
+    ),
 )
 
+
 # ---------------------------------------------------
-# ENABLE CORS (IMPORTANT FOR FRONTEND)
+# CORS MIDDLEWARE (FOR FRONTEND INTEGRATION)
 # ---------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # you can restrict later
+    allow_origins=["*"],  # Restrict later for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+
 # ---------------------------------------------------
-# INCLUDE ROUTERS
+# ROUTE REGISTRATION
 # ---------------------------------------------------
 app.include_router(auth.router)
 app.include_router(analyze.router)
 app.include_router(admin.router)
 
+
 # ---------------------------------------------------
 # STARTUP EVENTS
 # ---------------------------------------------------
 @app.on_event("startup")
-def startup():
+def on_startup():
+    """Initialize database and directories."""
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     init_db()
-    print("🔥 Backend started successfully!")
+    print("🔥 CyberShield backend started successfully!")
 
 
 # ---------------------------------------------------
 # HEALTH CHECK ENDPOINT
 # ---------------------------------------------------
-@app.get("/health")
-def health():
-    return {"status": "ok", "message": "CyberShield backend running smoothly"}
+@app.get("/health", tags=["system"])
+def health_check():
+    """
+    Quick system health check endpoint.
+    Returns:
+        JSON indicating if the backend is live and responsive.
+    """
+    return {
+        "status": "ok",
+        "service": "CyberShield Deepfake Detector",
+        "model": settings.HF_DEEPFAKE_MODEL,
+        "upload_dir": settings.UPLOAD_DIR,
+    }
+
 

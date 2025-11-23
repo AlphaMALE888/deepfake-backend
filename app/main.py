@@ -5,6 +5,9 @@ import os
 from app.routes import auth, analyze, admin
 from app.models.db import init_db
 from app.utils.config import settings
+from fastapi.staticfiles import StaticFiles
+
+
 
 
 # ---------------------------------------------------
@@ -68,4 +71,4 @@ def health_check():
         "upload_dir": settings.UPLOAD_DIR,
     }
 
-
+app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")

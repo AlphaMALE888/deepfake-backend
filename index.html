@@ -1,0 +1,671 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>CyberShield — Deepfake Scanner</title>
+<!-- Chart.js for circular score meter -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root{
+    --bg:#0f0c1f;
+    --panel:#171330;
+    --panel-2:#1e1a3d;
+    --text:#e9e7ff;
+    --muted:#bdb8ff;
+    --accent:#7c5cff;
+    --accent-2:#a784ff;
+    --ok:#27c93f;
+    --warn:#ffbd2e;
+    --bad:#ff5f56;
+  }
+  [data-theme="light"]{
+    --bg:#f5f6ff;
+    --panel:#ffffff;
+    --panel-2:#f2f3ff;
+    --text:#1b1738;
+    --muted:#4a3fb5;
+    --accent:#5b4dff;
+    --accent-2:#7b6cff;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family: Inter,system-ui,Segoe UI,Roboto,Arial,sans-serif;
+  }
+  .app{display:grid; grid-template-columns: 280px 1fr; min-height:100vh;}
+  /* Sidebar */
+  .side{
+    background:linear-gradient(180deg, var(--panel) 0%, var(--panel-2) 100%);
+    border-right:1px solid rgba(255,255,255,.06);
+    padding:20px;
+  }
+  .brand{
+    display:flex; align-items:center; gap:12px; margin-bottom:18px;
+  }
+  .logo{
+    width:38px; height:38px; border-radius:12px;
+    background: radial-gradient(120px 120px at 30% 20%, #a784ff, #5b4dff);
+    box-shadow: 0 0 30px rgba(124,92,255,.35);
+  }
+  .brand h1{font-size:18px; margin:0; letter-spacing:.5px}
+  .hello{
+    font-size:14px; color:var(--muted); margin:10px 0 18px 0;
+  }
+  .nav button{
+    width:100%; text-align:left; padding:12px 14px; margin:6px 0;
+    background:transparent; color:var(--text); border:1px solid rgba(255,255,255,.08);
+    border-radius:12px; cursor:pointer; transition:.2s;
+  }
+  .nav button.active, .nav button:hover{ background: rgba(124,92,255,.15); border-color: rgba(124,92,255,.5);}
+  .spacer{height:16px}
+  .small{font-size:12px; color:var(--muted); margin-top:12px}
+  .toggle{
+    margin-top:16px; display:flex; align-items:center; gap:10px;
+    padding:10px 12px; border-radius:12px; border:1px solid rgba(255,255,255,.08);
+    background:transparent; color:var(--text); cursor:pointer;
+  }
+
+  /* Main */
+  .main{
+    padding:24px; display:flex; flex-direction:column; gap:20px;
+  }
+  .card{
+    background: var(--panel);
+    border:1px solid rgba(255,255,255,.06);
+    border-radius:16px; padding:18px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  }
+  .row{display:flex; gap:16px; flex-wrap:wrap}
+  .col{flex:1 1 320px}
+  h2{margin:0 0 10px 0; font-size:18px}
+  h3{margin:0 0 8px 0}
+  label{display:block; font-size:13px; margin-bottom:6px; color:var(--muted)}
+  input[type="file"]{
+    width:100%; padding:12px; border:1px dashed rgba(255,255,255,.2); border-radius:12px; background:transparent; color:var(--text)
+  }
+  .btn{
+    padding:10px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.12);
+    color:white; background:linear-gradient(135deg, var(--accent), var(--accent-2));
+    cursor:pointer; font-weight:600; letter-spacing:.3px;
+  }
+  .btn.secondary{ background:transparent; color:var(--text) }
+  .stat{
+    display:flex; align-items:center; gap:8px; font-size:14px; color:var(--muted)
+  }
+  .pill{
+    display:inline-block; padding:6px 10px; border-radius:999px;
+    border:1px solid rgba(255,255,255,.15);
+    background:rgba(124,92,255,.15); color:var(--text); font-size:12px
+  }
+  .list{display:grid; gap:10px}
+  .item{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:12px; background:var(--panel-2); border:1px solid rgba(255,255,255,.06);
+    border-radius:12px
+  }
+  .right{display:flex; align-items:center; gap:10px}
+  .link{color:#b7a8ff; text-decoration:underline; cursor:pointer}
+  .muted{color:var(--muted)}
+  .divider{height:1px; background:rgba(255,255,255,.08); margin:10px 0}
+  .hidden{display:none}
+  .center{display:flex; align-items:center; justify-content:center}
+  .spinner{
+    width:22px; height:22px; border-radius:50%;
+    border:3px solid rgba(255,255,255,.2); border-top-color:#b7a8ff;
+    animation:spin 1s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* gauge canvas sizing */
+  .gauge-wrap{
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap; margin-top:10px
+  }
+  .gauge-box{
+    width:160px; height:160px; background:rgba(255,255,255,.04);
+    border:1px solid rgba(255,255,255,.06); border-radius:14px;
+    display:flex; align-items:center; justify-content:center; padding:8px;
+  }
+  .heatmap-box img{
+    max-width:100%; border-radius:12px; border:1px solid rgba(255,255,255,.06)
+  }
+
+  /* Login page */
+  .login-wrap{
+    position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+    background: radial-gradient(900px 900px at 70% -10%, rgba(124,92,255,.2), transparent),
+                radial-gradient(900px 900px at -10% 70%, rgba(124,92,255,.15), transparent),
+                var(--bg);
+    z-index: 50;
+  }
+  .login{
+    width: min(980px, 92vw); min-height: 520px;
+    border-radius: 20px; overflow:hidden; display:grid; grid-template-columns: 1.2fr 1fr;
+    background: var(--panel);
+    border:1px solid rgba(255,255,255,.08);
+    box-shadow: 0 30px 80px rgba(0,0,0,.35);
+  }
+  .left{
+    position:relative; padding:28px; background:
+      linear-gradient(180deg, #201a45 0%, #161233 100%),
+      url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="%238a6cff"/><stop offset="100%" stop-color="%23594dff"/></linearGradient></defs><g fill="url(%23g)" opacity="0.15"><circle cx="120" cy="120" r="80"/><circle cx="520" cy="200" r="120"/><circle cx="300" cy="420" r="100"/></g></svg>') center/cover no-repeat;
+    color:#e9e7ff;
+  }
+  .left h3{margin:0 0 6px 0}
+  .quote{
+    margin-top:10px; font-size:14px; color:#cfcaff; line-height:1.5
+  }
+  .right-auth{padding:34px; display:flex; flex-direction:column; gap:14px; background:var(--panel-2)}
+  .right-auth h2{margin:0 0 4px 0}
+  .field{display:flex; flex-direction:column; gap:6px}
+  .field input{
+    padding:12px 12px; border-radius:10px; border:1px solid rgba(255,255,255,.18);
+    background: transparent; color:var(--text)
+  }
+  .helper{font-size:12px; color:var(--muted)}
+</style>
+</head>
+<body data-theme="dark">
+<div id="login-overlay" class="login-wrap">
+  <div class="login">
+    <div class="left">
+      <div class="pill">CyberShield</div>
+      <h3>AI-Powered Deepfake Defense</h3>
+      <p class="quote">“Trust, but verify. In a world of synthetic media, <b>verification</b> is your superpower.”</p>
+    </div>
+    <div class="right-auth">
+      <h2>Welcome back</h2>
+      <p class="helper">Login to continue (demo users: <b>admin/admin</b> or <b>user/userpass</b>)</p>
+      <div class="field">
+        <label>Username</label>
+        <input id="username" placeholder="admin" />
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input id="password" type="password" placeholder="••••••••" />
+      </div>
+      <button class="btn" onclick="login()">Login</button>
+      <button class="btn secondary" onclick="fillDemo()">Use demo creds</button>
+      <div id="login-msg" class="helper"></div>
+    </div>
+  </div>
+</div>
+
+<div class="app" id="app" style="visibility:hidden">
+  <aside class="side">
+    <div class="brand">
+      <div class="logo"></div>
+      <h1>CyberShield</h1>
+    </div>
+    <div class="hello">Hello, <span id="hello-name">Guest</span> 👋</div>
+
+    <div class="nav">
+      <button class="active" onclick="showTab('scan')">➕ New Scan</button>
+      <button onclick="showTab('history')">📜 History</button>
+      <button onclick="showTab('reports')">📊 Reports</button>
+      <div class="spacer"></div>
+      <button onclick="showTab('settings')">⚙️ Settings</button>
+      <button onclick="logout()">🚪 Logout</button>
+      <div class="small">v2.0 • Dark Purple Cyber Theme</div>
+      <button class="toggle" onclick="toggleTheme()">🌓 Toggle Light/Dark</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <!-- New Scan -->
+    <section id="tab-scan" class="card">
+      <h2>New Scan</h2>
+      <p class="muted">Upload an image, audio (.wav), or video (.mp4). We’ll analyze and show a result.</p>
+      <div class="row">
+        <div class="col card">
+          <h3>🖼️ Image</h3>
+          <label>Select image file</label>
+          <input type="file" id="img-file" accept="image/*" />
+          <div class="divider"></div>
+          <button class="btn" onclick="scanImage()">Scan Image</button>
+          <div id="img-result" class="muted" style="margin-top:10px"></div>
+
+          <!-- Loader + Gauge + Heatmap -->
+          <div id="img-loading" class="stat hidden" style="margin-top:8px;">
+            <div class="spinner"></div> <span>Uploading...</span>
+          </div>
+          <div class="gauge-wrap hidden" id="img-gauge-wrap">
+            <div class="gauge-box"><canvas id="img-gauge"></canvas></div>
+            <div class="heatmap-box">
+              <div class="muted">Heatmap (if available):</div>
+              <img id="img-heatmap" class="hidden" alt="Image heatmap"/>
+            </div>
+          </div>
+        </div>
+
+        <div class="col card">
+          <h3>🔊 Audio</h3>
+          <label>Select audio file (.wav)</label>
+          <input type="file" id="aud-file" accept="audio/wav,audio/*" />
+          <div class="divider"></div>
+          <button class="btn" onclick="scanAudio()">Scan Audio</button>
+          <div id="aud-result" class="muted" style="margin-top:10px"></div>
+
+          <!-- Loader + Gauge -->
+          <div id="aud-loading" class="stat hidden" style="margin-top:8px;">
+            <div class="spinner"></div> <span>Uploading...</span>
+          </div>
+          <div class="gauge-wrap hidden" id="aud-gauge-wrap">
+            <div class="gauge-box"><canvas id="aud-gauge"></canvas></div>
+          </div>
+        </div>
+
+        <div class="col card">
+          <h3>🎞️ Video</h3>
+          <label>Select video file (.mp4)</label>
+          <input type="file" id="vid-file" accept="video/mp4,video/*" />
+          <div class="divider"></div>
+          <button class="btn" onclick="scanVideo()">Scan Video</button>
+          <div id="vid-result" class="muted" style="margin-top:10px"></div>
+
+          <!-- Loader + Gauge + Heatmap -->
+          <div id="vid-loading" class="stat hidden" style="margin-top:8px;">
+            <div class="spinner"></div> <span>Uploading & processing in background...</span>
+          </div>
+          <div class="gauge-wrap hidden" id="vid-gauge-wrap">
+            <div class="gauge-box"><canvas id="vid-gauge"></canvas></div>
+            <div class="heatmap-box">
+              <div class="muted">Heatmap:</div>
+              <img id="vid-heatmap" class="hidden" alt="Video heatmap"/>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- History -->
+    <section id="tab-history" class="card hidden">
+      <h2>History</h2>
+      <p class="muted">Latest results saved in DB.</p>
+      <div id="history-list" class="list"></div>
+      <div class="divider"></div>
+      <button class="btn" onclick="loadHistory()">Refresh</button>
+    </section>
+
+    <!-- Reports -->
+    <section id="tab-reports" class="card hidden">
+      <h2>Reports</h2>
+      <p class="muted">Summary of the most recent scan.</p>
+      <div id="report-box" class="muted">Run a scan to see a report here.</div>
+    </section>
+
+    <!-- Settings -->
+    <section id="tab-settings" class="card hidden">
+      <h2>Settings</h2>
+      <div class="row">
+        <div class="col">
+          <label>Backend URL</label>
+          <input id="backend-url" style="width:100%; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,.2); background:transparent; color:var(--text)" />
+          <div class="helper">Example: http://127.0.0.1:8000</div>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <button class="btn" onclick="saveBackend()">Save</button>
+    </section>
+  </main>
+</div>
+
+<script>
+  // ======== CONFIG ========
+  const store = {
+    backend: localStorage.getItem('backend') || 'http://127.0.0.1:8000',
+    token: localStorage.getItem('token') || '',
+    username: localStorage.getItem('username') || 'Guest',
+    lastUploadedVideoName: null
+  };
+  document.addEventListener('DOMContentLoaded', ()=>{
+    document.getElementById('backend-url').value = store.backend;
+  });
+
+  function apiURL(path){ return `${store.backend}${path}`; }
+  function headersAuthJSON(){
+    const h = {'Content-Type':'application/json'};
+    if(store.token) h['Authorization'] = `Bearer ${store.token}`;
+    return h;
+  }
+
+  // ======== THEME ========
+  function toggleTheme(){
+    const root = document.body;
+    const now = root.getAttribute('data-theme');
+    root.setAttribute('data-theme', now === 'dark' ? 'light' : 'dark');
+  }
+
+  // ======== TABS ========
+  function showTab(id){
+    ['scan','history','reports','settings'].forEach(t=>{
+      document.getElementById(`tab-${t}`).classList.add('hidden');
+    });
+    document.getElementById(`tab-${id}`).classList.remove('hidden');
+    document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
+    const btn = [...document.querySelectorAll('.nav button')].find(b=>b.textContent.toLowerCase().includes(id));
+    if(btn) btn.classList.add('active');
+    if(id==='history') loadHistory();
+  }
+
+  // ======== LOGIN ========
+  function fillDemo(){
+    document.getElementById('username').value = 'admin';
+    document.getElementById('password').value = 'admin';
+  }
+  async function login(){
+    const u = document.getElementById('username').value.trim();
+    const p = document.getElementById('password').value.trim();
+    const msg = document.getElementById('login-msg');
+    msg.textContent = 'Logging in...';
+    try{
+      const r = await fetch(apiURL('/auth/login'), {
+        method:'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({username:u, password:p})
+      });
+      if(!r.ok){ msg.textContent = 'Invalid credentials'; return; }
+      const data = await r.json();
+      store.token = data.access_token;
+      store.username = u;
+      localStorage.setItem('token', store.token);
+      localStorage.setItem('username', store.username);
+      document.getElementById('hello-name').textContent = store.username;
+      document.getElementById('login-overlay').style.display='none';
+      document.getElementById('app').style.visibility='visible';
+      showTab('scan');
+    }catch(e){
+      msg.textContent = 'Server error';
+    }
+  }
+  function logout(){
+    localStorage.removeItem('token');
+    location.reload();
+  }
+
+  // ======== SETTINGS ========
+  function saveBackend(){
+    const v = document.getElementById('backend-url').value.trim();
+    store.backend = v || 'http://127.0.0.1:8000';
+    localStorage.setItem('backend', store.backend);
+    alert('Saved! Reloading with new backend URL.'); location.reload();
+  }
+
+  // ======== HELPERS ========
+  function formWithFile(file){
+    const fd = new FormData();
+    fd.append('file', file);
+    return fd;
+  }
+  function statusChip(score){
+    const s = Number(score||0);
+    if(s >= 70) return `<span class="pill" style="border-color:rgba(255,95,86,.4);background:rgba(255,95,86,.12)">Likely Fake</span>`;
+    if(s >= 50) return `<span class="pill" style="background:rgba(255,189,46,.12);border-color:rgba(255,189,46,.4)">Suspicious</span>`;
+    return `<span class="pill" style="background:rgba(39,201,63,.12);border-color:rgba(39,201,63,.4)">Likely Real</span>`;
+  }
+  function toAbsolute(p){
+    if(!p) return "#";
+    if(p.startsWith('http')) return p;
+    if(p.startsWith('/')) return store.backend + p;
+    return store.backend + '/' + p.replace(/^\.?\/*/, '');
+  }
+
+  // ======== GAUGE (Chart.js Doughnut) ========
+  function renderGauge(canvasId, value){
+    const pct = Math.max(0, Math.min(100, Number(value||0)));
+    const ctx = document.getElementById(canvasId);
+    if(!ctx) return;
+    // destroy previous chart if any
+    if(ctx._chart){ ctx._chart.destroy(); }
+
+    const color = pct >= 70 ? '#ff5f56' : pct >= 50 ? '#ffbd2e' : '#27c93f';
+
+    const chart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Score','Remaining'],
+        datasets: [{
+          data: [pct, 100-pct],
+          backgroundColor: [color, 'rgba(255,255,255,0.07)'],
+          borderWidth: 0,
+          hoverOffset: 0,
+          circumference: 270,
+          rotation: 225
+        }]
+      },
+      options: {
+        cutout: '70%',
+        plugins: {
+          legend: { display:false },
+          tooltip: { enabled:false }
+        },
+        animation: {
+          animateRotate: true,
+          duration: 700
+        }
+      }
+    });
+    ctx._chart = chart;
+
+    // center text
+    // simple overlay
+    const parent = ctx.parentElement;
+    if(parent){
+      parent.style.position = 'relative';
+      let label = parent.querySelector('.gauge-label');
+      if(!label){
+        label = document.createElement('div');
+        label.className = 'gauge-label';
+        label.style.position = 'absolute';
+        label.style.inset = '0';
+        label.style.display = 'flex';
+        label.style.alignItems = 'center';
+        label.style.justifyContent = 'center';
+        label.style.fontWeight = '800';
+        label.style.fontSize = '22px';
+        parent.appendChild(label);
+      }
+      label.textContent = `${pct.toFixed(0)}%`;
+    }
+  }
+
+  // ======== IMAGE SCAN ========
+  async function scanImage(){
+    const el = document.getElementById('img-file');
+    const out = document.getElementById('img-result');
+    const loader = document.getElementById('img-loading');
+    const wrap = document.getElementById('img-gauge-wrap');
+    const heat = document.getElementById('img-heatmap');
+
+    if(!el.files[0]){ out.textContent='Select a file first.'; return; }
+    out.innerHTML = '';
+    wrap.classList.add('hidden');
+    heat.classList.add('hidden');
+    loader.classList.remove('hidden');
+
+    const fd = formWithFile(el.files[0]);
+    try{
+      const r = await fetch(apiURL('/analyze/image'), { method:'POST', body: fd });
+      const data = await r.json();
+      loader.classList.add('hidden');
+
+      // score can be raw 0-1 or 0-100 depending your endpoint; normalize:
+      let pct = data.fake_prob;
+      if(pct <= 1) pct = pct * 100;
+      pct = Number(pct||0);
+
+      out.innerHTML = `
+        <div>Fake Probability: <b>${pct.toFixed(2)}%</b> ${statusChip(pct)}</div>
+      `;
+      wrap.classList.remove('hidden');
+      renderGauge('img-gauge', pct);
+
+      // heatmap (image scans usually no heatmap; but if you add later)
+      if(data.report?.heatmap){
+        heat.src = toAbsolute(data.report.heatmap);
+        heat.classList.remove('hidden');
+      }
+      // update reports
+      document.getElementById('report-box').innerHTML =
+        `<b>Image Report</b><div class="divider"></div>File: ${data.filename || el.files[0].name}<br/>Score: ${pct.toFixed(2)}% ${statusChip(pct)}`;
+    }catch(e){
+      loader.classList.add('hidden');
+      out.textContent = 'Error uploading image.';
+    }
+  }
+
+  // ======== AUDIO SCAN ========
+  async function scanAudio(){
+    const el = document.getElementById('aud-file');
+    const out = document.getElementById('aud-result');
+    const loader = document.getElementById('aud-loading');
+    const wrap = document.getElementById('aud-gauge-wrap');
+
+    if(!el.files[0]){ out.textContent='Select a file first.'; return; }
+
+    out.innerHTML = '';
+    wrap.classList.add('hidden');
+    loader.classList.remove('hidden');
+
+    const fd = formWithFile(el.files[0]);
+    try{
+      const r = await fetch(apiURL('/analyze/audio'), { method:'POST', body: fd });
+      const data = await r.json();
+      loader.classList.add('hidden');
+
+      const features = data?.audio_features || data?.features || {};
+      const score = Number(features.fake_score || 0);
+
+      out.innerHTML = `
+        <div>Heuristic Fake Score: <b>${score}</b> ${statusChip(score)}</div>
+        <div class="muted">Energy: ${Number(features.energy||0).toFixed(6)} | ZCR: ${Number(features.zcr||0).toFixed(6)}</div>
+      `;
+      wrap.classList.remove('hidden');
+      renderGauge('aud-gauge', score);
+
+      document.getElementById('report-box').innerHTML =
+        `<b>Audio Report</b><div class="divider"></div>File: ${data.filename || el.files[0].name}<br/>Heuristic Score: ${score} ${statusChip(score)}`;
+    }catch(e){
+      loader.classList.add('hidden');
+      out.textContent = 'Error uploading audio.';
+    }
+  }
+
+  // ======== VIDEO SCAN (with polling) ========
+  async function scanVideo(){
+    const el = document.getElementById('vid-file');
+    const out = document.getElementById('vid-result');
+    const loader = document.getElementById('vid-loading');
+    const wrap = document.getElementById('vid-gauge-wrap');
+    const heat = document.getElementById('vid-heatmap');
+
+    if(!el.files[0]){ out.textContent='Select a file first.'; return; }
+
+    out.innerHTML = '';
+    wrap.classList.add('hidden');
+    heat.classList.add('hidden');
+    loader.classList.remove('hidden');
+
+    const fd = formWithFile(el.files[0]);
+    const filename = el.files[0].name;
+
+    try{
+      const r = await fetch(apiURL('/analyze/video'), { method:'POST', body: fd });
+      await r.json(); // we just need to start background task
+      store.lastUploadedVideoName = filename;
+
+      // Poll /admin/history for this filename
+      let tries = 0, maxTries = 30; // ~150s with 5s interval
+      const timer = setInterval(async ()=>{
+        tries++;
+        try{
+          const hist = await fetch(apiURL('/admin/history'));
+          const hdata = await hist.json();
+          const list = hdata.history || hdata || [];
+          const found = list.find ? list.find(x => x.filename === filename) : null;
+          if(found){
+            clearInterval(timer);
+            loader.classList.add('hidden');
+
+            const pct = Number(found.score ?? found.authenticity_score ?? 0);
+            out.innerHTML = `
+              <div>Authenticity Score: <b>${pct.toFixed(2)}%</b> ${statusChip(pct)}</div>
+              <div class="muted">is_fake: ${found.is_fake}</div>
+            `;
+            wrap.classList.remove('hidden');
+            renderGauge('vid-gauge', pct);
+
+            const hm = found.report?.heatmap;
+            if(hm){
+              heat.src = toAbsolute(hm);
+              heat.classList.remove('hidden');
+            }else{
+              heat.classList.add('hidden');
+            }
+
+            document.getElementById('report-box').innerHTML =
+              `<b>Video Report</b><div class="divider"></div>File: ${filename}<br/>Score: ${pct.toFixed(2)}% ${statusChip(pct)}<br/>`+
+              (hm ? `Heatmap: <a class="link" href="${toAbsolute(hm)}" target="_blank">open</a>` : `Heatmap: (pending)`);
+          }
+        }catch(e){ /* ignore and keep polling */ }
+
+        if(tries >= maxTries){
+          clearInterval(timer);
+          loader.classList.add('hidden');
+          out.innerHTML = `Processing took too long. Please open History to check later.`;
+        }
+      }, 5000);
+    }catch(e){
+      loader.classList.add('hidden');
+      out.textContent = 'Error uploading video.';
+    }
+  }
+
+  // ======== HISTORY ========
+  async function loadHistory(){
+    const box = document.getElementById('history-list');
+    box.innerHTML = `<div class="center"><div class="spinner"></div></div>`;
+    try{
+      const r = await fetch(apiURL('/admin/history'));
+      const data = await r.json();
+      const list = (data.history || data);
+      if(!list || !list.length){
+        box.innerHTML = `<div class="muted">No records yet. Run a scan.</div>`;
+        return;
+      }
+      box.innerHTML = list.map(item=>{
+        const pct = Number(item.score ?? item.authenticity_score ?? 0).toFixed(2);
+        const created = item.created_at?.replace('T',' ').slice(0,19);
+        const heat = item?.report?.heatmap ? `<a class="link" href="${toAbsolute(item.report.heatmap)}" target="_blank">Heatmap</a>` : `<span class="muted">No heatmap</span>`;
+        return `
+          <div class="item">
+            <div>
+              <div><b>${item.filename}</b></div>
+              <div class="muted">${created || ''}</div>
+            </div>
+            <div class="right">
+              <div>${pct}%</div>
+              ${statusChip(pct)}
+              <div class="divider" style="width:1px;height:20px;background:rgba(255,255,255,.12)"></div>
+              ${heat}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }catch(e){
+      box.innerHTML = `<div class="muted">Failed to load history.</div>`;
+    }
+  }
+
+  // ======== BOOT ========
+  (function boot(){
+    document.getElementById('hello-name').textContent = store.username || 'Guest';
+    if(store.token){
+      document.getElementById('login-overlay').style.display='none';
+      document.getElementById('app').style.visibility='visible';
+      showTab('scan');
+    }
+  })();
+</script>
+</body>
+</html>

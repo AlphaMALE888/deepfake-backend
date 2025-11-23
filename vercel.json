@@ -1,11 +1,10 @@
 {
   "version": 2,
   "buildCommand": "pip install -r requirements.txt",
-  "installCommand": "",
   "framework": null,
   "functions": {
     "api/**/*.py": {
-      "runtime": "python3.12"
+      "runtime": "vercel-python@3.12"
     }
   },
   "routes": [

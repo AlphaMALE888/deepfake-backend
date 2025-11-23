@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Fix pip and install manually
+set -o errexit  # stop script on error
+
+# Upgrade pip, wheel, setuptools
 pip install --upgrade pip setuptools wheel
 
-# install dependencies safely
-pip install -r requirements.txt --use-deprecated=legacy-resolver
+# Install dependencies safely
+pip install -r requirements.txt --use-deprecated=legacy-resolver || exit 1
 
-# Run the app
+# Start the app
 uvicorn app.main:app --host 0.0.0.0 --port 10000

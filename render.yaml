@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: deepfake-backend
+    env: python
+    region: singapore
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port 10000
+    envVars:
+      - key: HF_TOKEN
+        value: your_huggingface_token
+      - key: SECRET_KEY
+        value: mysecret123
+      - key: DATABASE_URL
+        value: sqlite:///./app.db
